@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Expense Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 1rem;
+    }
+    h1 {
+      text-align: center;
+    }
+    form > div {
+      margin-bottom: 0.8rem;
+    }
+    label {
+      display: inline-block;
+      width: 120px;
+      font-weight: bold;
+    }
+    input, select {
+      padding: 0.3rem;
+      width: 200px;
+    }
+    button {
+      padding: 0.4rem 1rem;
+      margin-top: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 2rem;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+      text-align: left;
+    }
+    th {
+      background-color: #f7f7f7;
+    }
+    .btn {
+      cursor: pointer;
+      padding: 0.2rem 0.5rem;
+      margin-right: 0.5rem;
+    }
+    .btn-edit {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+    }
+    .btn-delete {
+      background-color: #f44336;
+      color: white;
+      border: none;
+    }
+    #message {
+      margin-top: 1rem;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Expense Tracker</h1>
+
+  <form id="expense-form">
+    <input type="hidden" id="expense-id" />
+    <div>
+      <label for="expense-name">Name:</label>
+      <input type="text" id="expense-name" required />
+    </div>
+    <div>
+      <label for="expense-category">Category:</label>
+      <select id="expense-category" required>
+        <option value="">Select category</option>
+        <option value="ENTERTAINMENT">Entertainment</option>
+        <option value="GROCERIES">Groceries</option>
+        <option value="RESTAURANT">Restaurant</option>
+        <option value="UTILITIES">Utilities</option>
+        <option value="MISC">Misc</option>
+      </select>
+    </div>
+    <div>
+      <label for="expense-amount">Amount:</label>
+      <input type="number" id="expense-amount" step="0.01" required />
+    </div>
+    <button type="submit">Add Expense</button>
+    <button type="button" id="cancel-update" style="display:none;">Cancel Update</button>
+  </form>
+
+  <input type="text" id="search-name" placeholder="Search by expense name" />
+  <button id="search-btn">Search</button>
+  <button id="clear-search-btn">Clear</button>
+
+  <div id="message"></div>
+
+  <table id="expense-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Category</th>
+        <th>Amount</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+  const API_BASE = '/api/expense';
+
+  const form = document.getElementById('expense-form');
+  const expenseIdInput = document.getElementById('expense-id');
+  const nameInput = document.getElementById('expense-name');
+  const categorySelect = document.getElementById('expense-category');
+  const amountInput = document.getElementById('expense-amount');
+  const messageDiv = document.getElementById('message');
+  const expenseTableBody = document.querySelector('#expense-table tbody');
+  const searchInput = document.getElementById('search-name');
+  const searchBtn = document.getElementById('search-btn');
+  const clearSearchBtn = document.getElementById('clear-search-btn');
+  const cancelUpdateBtn = document.getElementById('cancel-update');
+
+  // Load all expenses on page load
+  document.addEventListener('DOMContentLoaded', fetchExpenses);
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const id = expenseIdInput.value;
+    if (id) {
+      updateExpense(id);
+    } else {
+      addExpense();
+    }
+  });
+
+  cancelUpdateBtn.addEventListener('click', resetForm);
+
+  searchBtn.addEventListener('click', () => {
+    const name = searchInput.value.trim();
+    if (name) {
+      fetchExpenseByName(name);
+    }
+  });
+
+  clearSearchBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    fetchExpenses();
+  });
+
+  function showMessage(msg, isError = false) {
+    messageDiv.textContent = msg;
+    messageDiv.style.color = isError ? 'red' : 'green';
+    setTimeout(() => {
+      messageDiv.textContent = '';
+    }, 3000);
+  }
+
+  function fetchExpenses() {
+    fetch(API_BASE + '/')
+      .then(res => res.json())
+      .then(data => {
+        populateTable(data);
+      })
+      .catch(() => showMessage('Failed to fetch expenses', true));
+  }
+
+  function populateTable(expenses) {
+    expenseTableBody.innerHTML = '';
+    expenses.forEach(exp => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${exp.expenseName}</td>
+        <td>${exp.expenseCategory}</td>
+        <td>${exp.expenseAmount}</td>
+        <td>
+          <button class="btn btn-edit" onclick="editExpense('${exp.id}')">Edit</button>
+          <button class="btn btn-delete" onclick="deleteExpense('${exp.id}')">Delete</button>
+        </td>
+      `;
+      expenseTableBody.appendChild(tr);
+    });
+  }
+
+  function addExpense() {
+    const expense = {
+      expenseName: nameInput.value.trim(),
+      expenseCategory: categorySelect.value,
+      expenseAmount: parseFloat(amountInput.value)
+    };
+
+    fetch(API_BASE + '/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(expense)
+    })
+      .then(res => {
+        if (res.status === 201) {
+          showMessage('Expense added successfully');
+          resetForm();
+          fetchExpenses();
+        } else {
+          res.text().then(text => showMessage('Failed to add expense: ' + text, true));
+        }
+      })
+      .catch(() => showMessage('Failed to add expense', true));
+  }
+
+  function editExpense(id) {
+    fetch(`${API_BASE}/${id}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Expense not found');
+        return res.json();
+      })
+      .then(expense => {
+        expenseIdInput.value = expense.id;
+        nameInput.value = expense.expenseName;
+        categorySelect.value = expense.expenseCategory;
+        amountInput.value = expense.expenseAmount;
+        form.querySelector('button[type="submit"]').textContent = 'Update Expense';
+        cancelUpdateBtn.style.display = 'inline-block';
+      })
+      .catch(() => showMessage('Failed to load expense for editing', true));
+  }
+
+  function updateExpense(id) {
+    const expense = {
+      id: id,
+      expenseName: nameInput.value.trim(),
+      expenseCategory: categorySelect.value,
+      expenseAmount: parseFloat(amountInput.value)
+    };
+
+    fetch(API_BASE + '/', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(expense)
+    })
+      .then(res => {
+        if (res.ok) {
+          showMessage('Expense updated successfully');
+          resetForm();
+          fetchExpenses();
+        } else {
+          res.text().then(text => showMessage('Failed to update expense: ' + text, true));
+        }
+      })
+      .catch(() => showMessage('Failed to update expense', true));
+  }
+
+  function deleteExpense(id) {
+    if (!confirm('Are you sure you want to delete this expense?')) return;
+
+    fetch(`${API_BASE}/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (res.status === 204) {
+          showMessage('Expense deleted successfully');
+          fetchExpenses();
+        } else {
+          res.text().then(text => showMessage('Failed to delete expense: ' + text, true));
+        }
+      })
+      .catch(() => showMessage('Failed to delete expense', true));
+  }
+
+  function fetchExpenseByName(name) {
+    fetch(`${API_BASE}/${name}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Expense not found');
+        return res.json();
+      })
+      .then(expense => {
+        populateTable([expense]);
+      })
+      .catch(() => showMessage('Expense not found', true));
+  }
+
+  function resetForm() {
+    expenseIdInput.value = '';
+    nameInput.value = '';
+    categorySelect.value = '';
+    amountInput.value = '';
+    form.querySelector('button[type="submit"]').textContent = 'Add Expense';
+    cancelUpdateBtn.style.display = 'none';
+  }
+</script>
+
+</body>
+</html>
